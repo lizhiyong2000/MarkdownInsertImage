@@ -1,0 +1,15 @@
+{
+	// use image's local path
+	"use_local_path" : false,
+	// indicates where to save images
+	"local_path" : "assets",
+
+	// qiniu uplcoad cofig
+	"isQiniu": true,
+    "qiniuAK": "",
+    "qiniuSK": "",
+    "qiniuBucket": "",
+    "qiniuDomain": ""
+}
+
+

@@ -1,0 +1,50 @@
+[
+  {
+    "caption": "Edit",
+    "mnemonic": "E",
+    "id": "edit",
+    "children": [
+      {
+        "caption": "-"
+      },
+      {
+        "command": "markdown_insert_image",
+        "id": "markdown_insert_image",
+        "caption": "Markdown Insert Image"
+      }
+    ]
+  },
+  {
+    "caption": "Preferences",
+    "mnemonic": "n",
+    "id": "preferences",
+    "children": [
+      {
+        "caption": "Package Settings",
+        "mnemonic": "P",
+        "id": "package-settings",
+        "children": [
+          {
+            "caption": "MarkdownInsertImage",
+            "children": [
+              {
+                "command": "open_file",
+                "args": {
+                  "file": "${packages}/MarkdownInsertImage/MarkdownInsertImage.sublime-settings"
+                },
+                "caption": "Settings – Default"
+              },
+              {
+                "command": "open_file",
+                "args": {
+                  "file": "${packages}/User/MarkdownInsertImage.sublime-settings"
+                },
+                "caption": "Settings – User"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -2,137 +2,192 @@ import sublime
 import sublime_plugin
 import os
 import sys
+import hashlib
+import platform
 import re
 import subprocess
 import shutil
-from imp import reload
+# from imp import reload
 
-print(sys.getdefaultencoding())
-reload(sys)
-# sys.setdefaultencoding('utf-8')
+import subprocess
+import json
 
+def get_python_sitepackages():
 
-import os
-import sys
+    cmd = 'python3 -c "import site; print(site.getsitepackages())"'
+    s = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, shell=True)
+    out = s.stdout.read().decode("utf-8")
+    s.stdout.close()
+
+    result = json.loads(out.replace("'", '"'))
+
+    cmd = 'python3 -m site --user-site'
+    s = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, shell=True)
+    out = s.stdout.read().decode("utf-8")
+    s.stdout.close()
+
+    result.append(out.strip())
+
+    return result
+
+site_packages = get_python_sitepackages()
+for site_package in site_packages:
+    if not site_package in sys.path:
+        sys.path.append(site_package)
+
+# print(sys.path)
 from qiniu import Auth, put_file
-if 3 != len(sys.argv):
-    print('[Usage] %s [dir_set] [filepath]' % os.path.basename(sys.argv[0]))
-    sys.exit(0)
-else:
-    # dir_set 的格式为 image/upload-qiniu/ ，注意末尾带反斜杠/
-    dir_set = sys.argv[1]
-    file_path = sys.argv[2]
-# 个人中心->密匙管理->AK
-access_key = '你的AccessKey'
-# 个人中心->密匙管理->SK
-secret_key = '你的SecretKey'
-# 七牛空间名
-bucket_name = '你的存储空间名'
-qiniu_auth = Auth(access_key, secret_key)
-def upload_qiniu(input_path):
-    #upload single file to qiniu
-    filename = os.path.basename(input_path)
-    key = '%s%s' % (dir_set, filename)
-    token = qiniu_auth.upload_token(bucket_name, key)
-    ret, info = put_file(token, key, input_path, check_crc=True)
-    if ret and ret['key'] == key:
-        print('%s done' % ('http://www.sylan215.com/' + dir_set + filename))
-    else:
-        print('%s error' % ('http://www.sylan215.com/' + dir_set + filename))
 
-class ImagePasteCommand(sublime_plugin.TextCommand):
-    def __init__(self, *args, **kwgs):
-        self.settings = sublime.load_settings('imagepaste.sublime-settings')
 
-        # get the image save dirname
-        self.image_dir_name = self.settings.get('image_dir_name', None)
-        if len(self.image_dir_name) == 0:
-            self.image_dir_name = None
-        print("[%d] get image_dir_name: %r"%(id(self.image_dir_name), self.image_dir_name))
+class MarkdownInsertImageCommand(sublime_plugin.TextCommand):
 
-    def run_command(self, cmd):
-        cwd = os.path.dirname(self.view.file_name())
-        print("cmd %r" % cmd)
-        proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd, env=os.environ)
+    def __init__(self, view):
+        super(MarkdownInsertImageCommand, self).__init__(view)
+        self.settings = sublime.load_settings('MarkdownInsertImage.sublime-settings')
 
-        try:
-            outs, errs = proc.communicate(timeout=15)
-            print("outs %r %r" % (outs, proc))
-        except Exception:
-            proc.kill()
-            outs, errs = proc.communicate()
-        print("outs %r, errs %r" % (b'\n'.join(outs.split(b'\r\n')), errs))
-        if errs is None or len(errs) == 0:
-            return outs.decode()
+        self.use_local_path= self.settings.get('use_local_path', False)
+        self.local_path= self.settings.get('local_path', 'assets')
+        self.isQiniu= self.settings.get('isQiniu', True)
+        self.qiniuAK= self.settings.get('qiniuAK', "")
+        self.qiniuSK= self.settings.get('qiniuSK', "")
+        self.qiniuBucket= self.settings.get('qiniuBucket', '')
+        self.qiniuDomain= self.settings.get('qiniuDomain', '')
 
-    def get_filename(self):
-        view = self.view
-        filename = view.file_name()
 
-        # create dir in current path with the name of current filename
-        dirname, _ = os.path.splitext(filename)
+        # print(self.qiniuDomain)
+    
+    def upload_qiniu(self, input_path):
 
-        # create new image file under currentdir/filename_without_ext/filename_without_ext%d.png
-        fn_without_ext = os.path.basename(dirname)
-        if self.image_dir_name is not None:
-            subdir_name = os.path.join(os.path.split(dirname)[0], self.image_dir_name)
+        access_key = self.qiniuAK
+        secret_key = self.qiniuSK
+        bucket_name = self.qiniuBucket
+
+        qiniu_auth = Auth(access_key, secret_key)
+
+        filename = os.path.basename(input_path)
+        key = filename
+        token = qiniu_auth.upload_token(bucket_name, key)
+        ret, info = put_file(token, key, input_path, check_crc=True)
+
+        print("upload ret:{}".format(ret))
+
+        if ret and ret['key'] == key:
+            return "http://{}/{}".format(self.qiniuDomain, filename)
         else:
-            subdir_name = dirname
-        if not os.path.lexists(subdir_name):
-            os.mkdir(subdir_name)
-        i = 0
-        while True:
-            # relative file path
-            rel_filename = os.path.join("%s/%s%d.png" % (self.image_dir_name if self.image_dir_name else fn_without_ext, fn_without_ext, i))
-            # absolute file path
-            abs_filename = os.path.join(subdir_name, "%s%d.png" % (fn_without_ext, i))
-            if not os.path.exists(abs_filename):
-                break
-            i += 1
+            return ''
 
-        print("save file: " + abs_filename + "\nrel " + rel_filename)
-        return abs_filename, rel_filename
+    def paste(self, mdFile, image_path):
+        projectDir = sublime.active_window().folders()[0]
+
+        filename = os.path.basename(mdFile)
+        basename = os.path.splitext(os.path.basename(mdFile))[0]
+
+        assetsPath = os.path.join(projectDir , self.local_path)
+
+        if not os.path.exists(assetsPath):
+            os.mkdir(assetsPath)
+
+
+        md5 = hashlib.md5()
+
+        with open(image_path, 'rb') as f:
+            md5.update(f.read())
+            f.close()
+
+        hash = md5.hexdigest()[0:8]
+
+        filename = "" + basename.replace('/\.\w+$/', '').replace('/\s+/g', '').split('-')[0] + "-" +  hash
+
+        isGIF = False;
+
+        if not isGIF:
+            filename += ".png";
+        else:
+            filename += ".gif";
+
+        print(filename)
+
+
+        filepath = os.path.join(assetsPath, filename)
+
+        if image_path != filepath:
+            shutil.copy2(image_path, filepath)
+
+        return self.upload_qiniu(filepath)
+
 
 
 
     def run(self, edit):
+
+        get_python_sitepackages()
+
         view = self.view
-        print("[%d] image_dir_name: %r"%(id(self.image_dir_name),self.image_dir_name))
-        rel_fn = self.paste()
 
-        if not rel_fn:
-            view.run_command("paste")
+        if self.isQiniu:
+            if self.qiniuAK == ''  or self.qiniuSK == '' or self.qiniuBucket == '' or self.qiniuDomain == '':
+                sublime.active_window().status_message("Qiniu upload enabled, but qiniu settings not valid")
+                return
+
+        mdFile = view.file_name()
+        # mdFile = src_filepath
+        # print(mdFile)
+        if not mdFile:
+            sublime.active_window().status_message("Current file not saved, save first.")
             return
-        for pos in view.sel():
-            # print("scope name: %r" % (view.scope_name(pos.begin())))
-            if 'text.html.markdown' in view.scope_name(pos.begin()):
-                view.insert(edit, pos.begin(), "![](%s)" % rel_fn)
-            else:
-                view.insert(edit, pos.begin(), "%s" % rel_fn)
-            # only the first cursor add the path
-            break
+
+        # self.view.insert(edit, 0, "Hello, World!")
+
+        clipboard = sublime.get_clipboard()
+
+        # print(type(clipboard))
+
+        # print(clipboard)
+
+        filelist = []
+
+        # print(type(clipboard))
+
+        if type(clipboard) == str and len(clipboard) > 0:
+
+            # print(clipboard)
+
+            # print(clipboard.startswith("x-special/nautilus-clipboard"))
+
+            if clipboard.startswith("x-special/nautilus-clipboard"):
+
+                files = clipboard.splitlines()
+
+                if len(files) == 3 and files[2].startswith("file:///"):
+
+                    filepath = filefiles[2][7:]
+
+                    if  os.path.exists(filepath):
+                        filelist.append(filepath)
 
 
-    def paste(self):
-        if sys.platform != 'win32':
-            dirname = os.path.dirname(__file__)
-            command = ['/usr/bin/python3', os.path.join(dirname, 'bin/imageutil.py'), 'save']
-            abs_fn, rel_fn = self.get_filename()
-            command.append(abs_fn)
+            if clipboard.startswith("/"):
 
-            out = self.run_command(" ".join(command))
-            if out and out[:4] == "save":
-                return rel_fn
-        # else: # win32
-        #     ImageFile.LOAD_TRUNCATED_IMAGES = True
-        #     im = ImageGrab.grabclipboard()
-        #     if im:
-        #         abs_fn, rel_fn = self.get_filename()
-        #         im.save(abs_fn,'PNG')
-        #         return rel_fn
+                files = clipboard.splitlines()
 
-        print('clipboard buffer is not image!')
-        return None
+                for file in files:
+                    if(file.startswith("/")) and os.path.exists(file):
+                        filelist.append(file)
 
 
+
+        print(filelist)
+
+        extensions = re.compile("(gif|jpg|jpeg|png)$", re.I)
+        for file in filelist:
+            if extensions.search(file):
+                # print("{}-{}".format(mdFile, file))
+                url = self.paste(mdFile, file)
+
+                for pos in view.sel():
+                    # print("scope name: %r" % (view.scope_name(pos.begin())))
+                    if 'text.html.markdown' in view.scope_name(pos.begin()):
+                        view.insert(edit, pos.begin(), "![](%s)\n" % url)
+                    else:
+                        view.insert(edit, pos.begin(), "%s" % url)
 

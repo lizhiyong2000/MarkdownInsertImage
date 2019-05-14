@@ -1,0 +1,15 @@
+[
+  {
+    "keys": [
+      "ctrl+alt+v"
+    ],
+    "command": "markdown_insert_image",
+    "context": [
+      {
+        "key": "selector",
+        "operator": "equal",
+        "operand": "text.md, text.markdown"
+      }
+    ]
+  }
+]
