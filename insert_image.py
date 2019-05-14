@@ -100,6 +100,9 @@ class MarkdownInsertImageCommand(sublime_plugin.TextCommand):
 
         isGIF = False;
 
+        if image_path.lower().endswith(".gif"):
+            isGIF = True
+
         if not isGIF:
             filename += ".png";
         else:
@@ -150,7 +153,7 @@ class MarkdownInsertImageCommand(sublime_plugin.TextCommand):
 
         if type(clipboard) == str and len(clipboard) > 0:
 
-            # print(clipboard)
+            print(clipboard)
 
             # print(clipboard.startswith("x-special/nautilus-clipboard"))
 
@@ -160,7 +163,7 @@ class MarkdownInsertImageCommand(sublime_plugin.TextCommand):
 
                 if len(files) == 3 and files[2].startswith("file:///"):
 
-                    filepath = filefiles[2][7:]
+                    filepath = files[2][7:]
 
                     if  os.path.exists(filepath):
                         filelist.append(filepath)
