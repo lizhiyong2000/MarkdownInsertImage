@@ -96,7 +96,13 @@ class MarkdownInsertImageCommand(sublime_plugin.TextCommand):
 
         hash = md5.hexdigest()[0:8]
 
-        filename = "" + basename.replace('/\.\w+$/', '').replace('/\s+/g', '').split('-')[0] + "-" +  hash
+        filename = "" + basename.replace('/\.\w+$/', '').replace('/\s+/g', '')
+        match = re.search('^([12]\d{3}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])-)', filename)
+
+        if match:
+            filename = filename[11:]
+
+        filename = filename.split('-')[0] + "-" +  hash
 
         isGIF = False;
 
